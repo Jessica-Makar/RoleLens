@@ -1,5 +1,6 @@
 import json
 import streamlit as st
+import uuid
 
 from src.resume_parser import extract_resume_text
 from src.claude_analyzer import analyze_resume
@@ -9,6 +10,8 @@ from src.branding import (
     BRAND_TAGLINE,
     BRAND_DESCRIPTION,
 )
+
+from src.usage_limiter import consume_analysis
 
 
 # ==========================================
@@ -21,6 +24,24 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# ==========================================
+# INITIALIZE VISITOR IDENTIFICATION
+# ==========================================
+
+visitor_id = st.query_params.get("visitor_id")
+
+if not visitor_id:
+    visitor_id = str(uuid.uuid4())
+    st.query_params["visitor_id"] = visitor_id
+
+else:
+    try:
+        visitor_id = str(uuid.UUID(visitor_id))
+
+    except (ValueError, TypeError):
+        visitor_id = str(uuid.uuid4())
+        st.query_params["visitor_id"] = visitor_id
 
 
 # ==========================================
@@ -386,12 +407,11 @@ if analyze_button:
         st.error("Your resume exceeds the 10 MB file limit.")
 
     else:
-        file_type = uploaded_file.name.rsplit(".", 1)[-1].lower()
-
         try:
-            with st.spinner(
-                "Extracting resume information and analyzing with Claude..."
-            ):
+            file_type = uploaded_file.name.rsplit(".", 1)[-1].lower()
+
+            # Extract the resume before using an analysis allowance.
+            with st.spinner("Extracting resume information..."):
                 uploaded_file.seek(0)
 
                 resume_text = extract_resume_text(
@@ -399,15 +419,46 @@ if analyze_button:
                     file_type,
                 )
 
-                analysis = analyze_resume(
-                    resume_text,
-                    job_description,
+            # Check and reserve an analysis from Supabase.
+            usage = consume_analysis(visitor_id)
+
+            if not usage.get("allowed"):
+                reason = usage.get("reason")
+
+                if reason == "visitor_limit":
+                    st.warning(
+                        "You've reached your daily limit of "
+                        "2 resume analyses. Please come back tomorrow."
+                    )
+
+                elif reason == "daily_limit":
+                    st.warning(
+                        "RoleLens has reached its daily analysis "
+                        "limit of 10. Please come back tomorrow."
+                    )
+
+                else:
+                    st.error(
+                        "Unable to verify your analysis allowance. "
+                        "Please try again later."
+                    )
+
+            else:
+                with st.spinner("Analyzing your resume with Claude..."):
+                    analysis = analyze_resume(
+                        resume_text,
+                        job_description,
+                    )
+
+                    st.session_state["analysis"] = analysis
+                    st.session_state["resume_filename"] = uploaded_file.name
+
+                st.success("Resume analysis completed!")
+
+                st.caption(
+                    f"Your daily usage: "
+                    f"{usage['visitor_used']}/2 visitor analyses."
                 )
-
-                st.session_state["analysis"] = analysis
-                st.session_state["resume_filename"] = uploaded_file.name
-
-            st.success("Resume analysis completed!")
 
         except (ValueError, RuntimeError) as error:
             st.error(str(error))
@@ -418,6 +469,7 @@ if analyze_button:
                 "Please try again. "
                 f"Error details: {error}"
             )
+
 
 
 # ==========================================

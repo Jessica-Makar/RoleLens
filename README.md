@@ -1,9 +1,8 @@
-# RoleLens – AI-Powered Resume Analyzer
+# RoleLens: AI-Powered Resume Analyzer
 
 **See your potential. Find your next opportunity.**
 
-RoleLens is an AI-powered resume analysis application that evaluates how well a candidate's resume aligns with a job description. Using Claude AI, Python, and Streamlit, the application identifies relevant skills, verifies qualifications through resume evidence, highlights missing requirements, and generates actionable recommendations to help candidates better understand their job fit.
-
+RoleLens is an AI-powered resume analysis application that evaluates how well a candidate's resume aligns with a job description. Using Anthropic's Claude AI, Python, and Streamlit, the application identifies relevant skills, verifies qualifications through resume evidence, highlights missing requirements, and generates actionable recommendations to help candidates better understand their job fit.
 
 ## Application Screenshots
 
@@ -31,6 +30,8 @@ RoleLens is an AI-powered resume analysis application that evaluates how well a 
 - **Actionable Recommendations:** Generate suggestions to improve resume alignment with job requirements.
 - **Interactive Dashboard:** View match scores, score breakdowns, and detailed analysis in an organized interface.
 - **Report Generation:** Download analysis results as PDF and JSON files.
+- **Usage Tracking:** Track anonymous visitor activity and enforce daily analysis limits using Supabase.
+- **API Cost Protection:** Restrict usage to 2 analyses per visitor per day and 10 analyses across all visitors per day.
 
 ## Technologies Used
 
@@ -39,6 +40,8 @@ RoleLens is an AI-powered resume analysis application that evaluates how well a 
 | Python | Application logic and data processing |
 | Streamlit | Interactive web interface |
 | Anthropic Claude API | AI-powered resume analysis |
+| Supabase | Database and daily usage tracking |
+| PostgreSQL | Store and manage analysis usage records |
 | pypdf | PDF text extraction |
 | python-docx | DOCX text extraction |
 | ReportLab | PDF report generation |
@@ -50,16 +53,26 @@ RoleLens is an AI-powered resume analysis application that evaluates how well a 
 ```text
 RoleLens/
 ├── .streamlit/
-│   └── config.toml
+│   ├── config.toml
+│   └── secrets.toml          # Local only; not committed
 ├── data/
 │   └── sample_resumes/
 ├── prompts/
 │   └── resume_analysis.txt
+├── screenshots/
+│   ├── home1.png
+│   ├── home2.png
+│   ├── dashboard.png
+│   └── report.png
 ├── src/
+│   ├── __init__.py
 │   ├── branding.py
 │   ├── claude_analyzer.py
 │   ├── report_generator.py
-│   └── resume_parser.py
+│   ├── resume_parser.py
+│   └── usage_limiter.py
+├── supabase/
+│   └── setup.sql
 ├── tests/
 │   ├── test_analyzer.py
 │   ├── test_resume_parser.py
@@ -79,6 +92,7 @@ RoleLens/
 - Python 3.10 or later
 - Git
 - An Anthropic API key
+- A Supabase account and project
 
 ### 1. Clone the Repository
 
@@ -121,20 +135,59 @@ Add your Anthropic API key:
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-### 5. Run the Application
+### 5. Configure Supabase
+
+RoleLens uses Supabase to track analysis usage and enforce daily limits.
+
+1. Create a Supabase project.
+2. Open the SQL Editor in your Supabase dashboard.
+3. Open `supabase/setup.sql` from this repository.
+4. Copy its contents into the Supabase SQL Editor and execute the script.
+5. Configure your Supabase credentials in `.streamlit/secrets.toml`.
+
+Create the following file:
+
+```toml
+[supabase]
+url = "YOUR_SUPABASE_PROJECT_URL"
+service_role_key = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+```
+
+Replace the placeholders with your Supabase project URL and service-role key.
+
+**Security:** The service-role key must only be used by the server-side application. Never expose it in client-side code or commit it to GitHub.
+
+### 6. Run the Application
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 The application will open in your browser.
+
+## Usage Limits
+
+To help protect API usage and control costs, RoleLens enforces two daily limits:
+
+| Restriction | Daily Limit |
+|---|---:|
+| Analyses per visitor | 2 |
+| Analyses across all visitors | 10 |
+
+- Each visitor receives an anonymous UUID-based identifier stored in the browser's URL query parameters.
+- Supabase records accepted analysis requests and tracks daily usage.
+- Usage limits reset at midnight UTC.
+- Visitors who reach their individual limit must wait until the next daily reset.
+- The global limit prevents additional analyses once 10 requests have been accepted that day.
+
+**Note:** Visitor identification is anonymous and browser-based, not account-based authentication. Clearing the visitor ID or using another browser can create a new visitor identity. The global daily limit provides an additional safeguard.
 
 ## Running Tests
 
 Run the automated test suite from the project root:
 
 ```bash
-pytest -v
+python -m pytest -v
 ```
 
 ## How It Works
@@ -142,15 +195,21 @@ pytest -v
 1. The user uploads a resume in PDF or DOCX format.
 2. RoleLens extracts and cleans the resume text.
 3. The user provides a job description.
-4. The application sends the resume content and job description to Claude for structured analysis.
-5. The analysis is validated and used to calculate the overall match score.
-6. Results are displayed in an interactive dashboard.
-7. The user can download the analysis as a PDF or JSON report.
+4. The application identifies the visitor using an anonymous UUID.
+5. Supabase checks the visitor's daily allowance and the application's global daily limit.
+6. If usage is permitted, the application sends the resume content and job description to Claude for structured analysis.
+7. The analysis is validated and used to calculate the overall match score.
+8. Results are displayed in an interactive dashboard.
+9. The user can download the analysis as a PDF or JSON report.
+10. Supabase stores the accepted analysis usage record.
 
 ## Privacy and Security
 
-- API credentials are stored in environment variables and should never be committed to the repository.
+- API credentials are stored in environment variables and Streamlit secrets and should never be committed to the repository.
+- The Supabase service-role key is used exclusively by the server-side application.
+- Row Level Security (RLS) is enabled on the analysis usage table.
 - Resume content is processed through the Anthropic API for analysis.
+- Anonymous visitor identifiers are used for usage tracking; users do not need to create accounts.
 - Users should avoid uploading sensitive personal information unless they understand and accept the applicable data-handling practices.
 
 ## Future Improvements
@@ -160,6 +219,7 @@ Potential enhancements include:
 - Comparison of multiple resumes against one job description.
 - More detailed job-specific skill recommendations.
 - Additional analysis and reporting options.
+- Deployment to a public hosting platform.
 
 ## Disclaimer
 
